@@ -79,16 +79,37 @@ class DatasetCloner:
         if target_path.exists():
             shutil.rmtree(target_path)
         target_path.mkdir(parents=True)
-        clone_res = subprocess.run(
-            ['git', 'clone', url, str(target_path), '--depth=1', '-q'],
-            capture_output=True, check=True, input='')
+        clone_res = subprocess.run(['git', 'clone', url, str(target_path), '--depth=1', '-q'],
+                                   capture_output=True, check=True, input='')
         clone_res.check_returncode()
+
+    def _checkout_required(self, repo: str, files_list: List[str]):
+        print(f'Checking out from {repo}')
+        url = 'https://:@github.com/' + repo + '.git'
+        target_path = self.repos_path / repo
+        if target_path.exists():
+            shutil.rmtree(target_path)
+        target_path.mkdir(parents=True)
+        clone_res = subprocess.run(['git', 'init', str(target_path)], capture_output=True, check=True)
+        clone_res.check_returncode()
+        clone_res = subprocess.run(['git', 'remote', 'add', 'origin', url],
+                                   cwd=str(target_path), capture_output=True, check=True)
+        clone_res.check_returncode()
+        clone_res = subprocess.run(['git', 'config', 'core.sparseCheckout', 'true'], cwd=str(target_path),
+                                   capture_output=True, check=True)
+        clone_res.check_returncode()
+        (target_path / '.git/info/sparse-checkout').open('w').write('\n'.join(files_list))
+        clone_res = subprocess.run(['git', 'pull', '--depth=1', 'origin', 'master'], cwd=str(target_path),
+                                   capture_output=True, check=True)
+        clone_res.check_returncode()
+        shutil.rmtree(target_path / '.git')
 
     def collect(self):
         for repo, files_list in self.repos_file_lists.items():
             if repo in self.finished_repos or repo in self.failed_repos:
                 continue
             try:
+                # self._checkout_required(repo, files_list)
                 self._clone(repo)
                 self._clean_dir(self.repos_path / repo, set(files_list))
                 self._declare_finished(repo)
