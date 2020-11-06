@@ -116,55 +116,57 @@ class MMRDatasetTokenizer:
     def _tokenize_classes(self, project_dir: Path, project_out_dir: Path, project_name: str):
         classes_out_dir = project_out_dir / 'classes'
         classes_out_dir.mkdir(parents=True)
+        cs_tokens = {}
         with open(project_dir / 'classes.csv') as classes_file:
             classes_reader = csv.reader(classes_file)
             next(classes_reader)
-            for _, class_name, class_file_path, class_offset in classes_reader:
-                class_body = read_item(project_dir / project_name / class_file_path, int(class_offset))
+            for c_id, c_name, c_path, c_offset in classes_reader:
+                class_body = read_item(project_dir / project_name / c_path, int(c_offset))
                 class_subtokenized_sentences = code_to_cubert_sentences(
                     code=class_body, initial_tokenizer=self.tokenizer, subword_tokenizer=self.sub_word_tokenizer)
-                with (classes_out_dir / f'{class_name}.json').open('w') as class_out_file:
+                cs_tokens[c_id] = class_subtokenized_sentences
+                with open(classes_out_dir / f'{c_name}.json', 'w') as class_out_file:
                     json.dump(class_subtokenized_sentences, class_out_file)
+        return cs_tokens
 
     def _tokenize_methods(self, project_dir: Path, project_out_dir: Path, project_name: str):
         methods_out_dir = project_out_dir / 'methods'
         methods_out_dir.mkdir(parents=True)
+        ms_tokenized = []
         with open(project_dir / 'methods.csv') as methods_file:
             methods_reader = csv.reader(methods_file)
             next(methods_reader)
-            for _, method_name, m_path, m_offset, _, _ in methods_reader:
+            for m_id, m_name, m_path, m_offset, m_src_class, _ in methods_reader:
                 method_body = read_item(project_dir / project_name / m_path, int(m_offset))
                 method_subtokenized_sentences = code_to_cubert_sentences(
                     code=method_body, initial_tokenizer=self.tokenizer, subword_tokenizer=self.sub_word_tokenizer)
-                with (methods_out_dir / f'{method_name}.json').open('w') as method_out_file:
+                ms_tokenized.append((m_name, m_src_class, method_subtokenized_sentences))
+                with (methods_out_dir / f'{m_name}.json').open('w') as method_out_file:
                     json.dump(method_subtokenized_sentences, method_out_file)
+        return ms_tokenized
 
-    def _tokenize_classes_without_methods(self, project_dir: Path, project_out_dir: Path, project_name: str):
-        with open(project_dir / 'classes.csv') as classes_list_file:
-            classes_reader = csv.reader(classes_list_file)
-            next(classes_reader)
-            class_locations = {int(c_id): (c_path, int(c_offset)) for c_id, _, c_path, c_offset in classes_reader}
-        classes_without_methods_dir = project_out_dir / 'classes_without_methods'
-        classes_without_methods_dir.mkdir(parents=True)
-        with open(project_dir / 'methods.csv') as methods_file:
-            methods_reader = csv.reader(methods_file)
-            next(methods_reader)
-            for _, m_name, m_path, m_offset, m_class_id, _ in methods_reader:
-                c_path, c_offset = class_locations[int(m_class_id)]
-                class_body_without_method = read_class_without_method(
-                    project_dir / project_name / c_path, c_offset, int(m_offset))
-                class_without_method_subtokenized_sentences = code_to_cubert_sentences(
-                    code=class_body_without_method, initial_tokenizer=self.tokenizer,
-                    subword_tokenizer=self.sub_word_tokenizer)
-                with open(classes_without_methods_dir / f'{m_name}.json', 'w') as class_without_method_file:
-                    json.dump(class_without_method_subtokenized_sentences, class_without_method_file)
+    @staticmethod
+    def _remove_methods_from_classes(project_out_dir, cs_tokens, ms_tokenized):
+        cwm_dir = project_out_dir / 'classes_without_methods'
+        cwm_dir.mkdir(parents=True)
+        for m_name, m_src_class, m_tokens in ms_tokenized:
+            c_tokens = cs_tokens[m_src_class]
+            c_pos = 0
+            while c_tokens[c_pos:c_pos + len(m_tokens)] != m_tokens:
+                c_pos += 1
+                if c_pos > len(c_tokens) - len(m_tokens):
+                    print('Failed to remove method from class:', project_out_dir, m_name)
+                    raise AssertionError
+            cwm_tokens = c_tokens[:c_pos] + c_tokens[c_pos + len(m_tokens):]
+            with open(cwm_dir / f'{m_name}.json', 'w') as cwm_file:
+                json.dump(cwm_tokens, cwm_file)
 
     def tokenize_project(self, project_name: str):
         project_dir = self.input_dir / project_name
         project_out_dir = self.output_dir / project_name
-        self._tokenize_classes(project_dir, project_out_dir, project_name)
-        self._tokenize_classes_without_methods(project_dir, project_out_dir, project_name)
-        self._tokenize_methods(project_dir, project_out_dir, project_name)
+        cs_tokens = self._tokenize_classes(project_dir, project_out_dir, project_name)
+        ms_tokens = self._tokenize_methods(project_dir, project_out_dir, project_name)
+        self._remove_methods_from_classes(project_out_dir, cs_tokens, ms_tokens)
 
 
 def main(argv):
