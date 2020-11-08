@@ -1,12 +1,12 @@
 from pathlib import Path
 import csv
 import json
-from enum import Enum
 from multiprocessing import Pool
+from typing import Callable, List
 
 from absl import app, flags
 from tensor2tensor.data_generators import text_encoder
-
+import javalang
 from cubert.cubert_tokenizer import CuBertTokenizer
 from cubert.code_to_subtokenized_sentences import code_to_cubert_sentences
 
@@ -18,86 +18,62 @@ flags.DEFINE_string('output_dir', None,
                     'Path to the output directory sub_tokenized source code.')
 
 
-class ReadState(Enum):
-    DEFAULT = 1
-    SLASH = 2
-    SINGLE_LINE_COMMENT = 3
-    MULTILINE_COMMENT = 4
-    MULTILINE_COMMENT_STAR = 5
-    STRING_LITERAL = 6
-    STRING_LITERAL_ESCAPED = 7
-    CHAR_LITERAL = 8
-    CHAR_LITERAL_ESCAPED = 9
-
-
-def find_item_end(file_content: str, offset: int) -> int:
-    pos = offset
-    balance = 0
-    state = ReadState.DEFAULT
-    while True:
-        c = file_content[pos]
-        if state == ReadState.DEFAULT:
-            if c == '{':
-                balance += 1
-            elif c == '}':
-                balance -= 1
-                if balance == 0:
-                    break
-            elif c == '/':
-                state = ReadState.SLASH
-            elif c == '"':
-                state = ReadState.STRING_LITERAL
-            elif c == "'":
-                state = ReadState.CHAR_LITERAL
-        elif state == ReadState.SLASH:
-            if c == '/':
-                state = ReadState.SINGLE_LINE_COMMENT
-            elif c == '*':
-                state = ReadState.MULTILINE_COMMENT
-            else:
-                state = ReadState.DEFAULT
-        elif state == ReadState.SINGLE_LINE_COMMENT:
-            if c == '\n':
-                state = ReadState.DEFAULT
-        elif state == ReadState.MULTILINE_COMMENT:
-            if c == '*':
-                state = ReadState.MULTILINE_COMMENT_STAR
-        elif state == ReadState.MULTILINE_COMMENT_STAR:
-            if c == '/':
-                state = ReadState.DEFAULT
-            elif c != '*':
-                state = ReadState.MULTILINE_COMMENT
-        elif state == ReadState.STRING_LITERAL:
-            if c == '"':
-                state = ReadState.DEFAULT
-            elif c == '\\':
-                state = ReadState.STRING_LITERAL_ESCAPED
-        elif state == ReadState.STRING_LITERAL_ESCAPED:
-            state = ReadState.STRING_LITERAL
-        elif state == ReadState.CHAR_LITERAL:
-            if c == "'":
-                state = ReadState.DEFAULT
-            elif c == '\\':
-                state = ReadState.CHAR_LITERAL_ESCAPED
-        elif state == ReadState.CHAR_LITERAL_ESCAPED:
-            state = ReadState.CHAR_LITERAL
+def find_closing_brace_pos(tokens: List[javalang.tokenizer.JavaToken], open_pos: int) -> int:
+    pos = open_pos
+    balance = 1
+    while balance:
         pos += 1
-    return pos + 1
+        if tokens[pos].value == '{':
+            balance += 1
+        elif tokens[pos].value == '}':
+            balance -= 1
+    return pos
 
 
-def read_item(file_path: Path, offset: int) -> str:
+def find_token_pos_in_source(source: str, token: javalang.tokenizer.JavaToken) -> int:
+    pos, cur_line = 0, 1
+    while cur_line != token.position.line:
+        if source[pos] == '\n':
+            cur_line += 1
+        pos += 1
+    return pos + token.position.column - 1
+
+
+def find_token_on_top(tokens: List[javalang.tokenizer.JavaToken], start_pos: int,
+                      predicate: Callable[[javalang.tokenizer.JavaToken], bool]) -> int:
+    cur_token_index = start_pos
+    balance = 0
+    while not predicate(tokens[cur_token_index]) or balance:
+        if isinstance(tokens[cur_token_index], javalang.tokenizer.Separator) and tokens[cur_token_index].value == '(':
+            balance += 1
+        elif isinstance(tokens[cur_token_index], javalang.tokenizer.Separator) and tokens[cur_token_index].value == ')':
+            balance -= 1
+        cur_token_index += 1
+    return cur_token_index
+
+
+def read_class(file_path: Path, offset: int) -> str:
     with file_path.open() as file:
-        file_content = file.read()
-    scope_end = find_item_end(file_content, offset)
-    return file_content[offset:scope_end]
+        cropped_source = file.read()[offset:]
+    tokens = list(javalang.tokenizer.tokenize(cropped_source))
+    cur_token_index = find_token_on_top(tokens, 0, lambda token: (
+            isinstance(token, javalang.tokenizer.Keyword) and token.value in ('class', 'enum')))
+    cur_token_index = find_token_on_top(tokens, cur_token_index, lambda token: (
+            isinstance(token, javalang.tokenizer.Separator) and token.value == '{'))
+    end_token_index = find_closing_brace_pos(tokens, cur_token_index)
+    end_pos = find_token_pos_in_source(cropped_source, tokens[end_token_index])
+    return cropped_source[:end_pos + 1]
 
 
-def read_class_without_method(file_path: Path, class_offset: int, method_offset: int) -> str:
+def read_method(file_path: Path, offset: int) -> str:
     with file_path.open() as file:
-        file_content = file.read()
-    class_end = find_item_end(file_content, class_offset)
-    method_end = find_item_end(file_content, method_offset)
-    return file_content[class_offset:method_offset] + file_content[method_end:class_end]
+        cropped_source = file.read()[offset:]
+    tokens = list(javalang.tokenizer.tokenize(cropped_source))
+    open_token_index = find_token_on_top(tokens, 0, lambda token: (
+            isinstance(token, javalang.tokenizer.Separator) and token.value == '{'))
+    end_token_index = find_closing_brace_pos(tokens, open_token_index)
+    end_pos = find_token_pos_in_source(cropped_source, tokens[end_token_index])
+    return cropped_source[:end_pos + 1]
 
 
 class MMRDatasetTokenizer:
@@ -121,12 +97,12 @@ class MMRDatasetTokenizer:
             classes_reader = csv.reader(classes_file)
             next(classes_reader)
             for c_id, c_name, c_path, c_offset in classes_reader:
-                class_body = read_item(project_dir / project_name / c_path, int(c_offset))
-                class_subtokenized_sentences = code_to_cubert_sentences(
-                    code=class_body, initial_tokenizer=self.tokenizer, subword_tokenizer=self.sub_word_tokenizer)
-                cs_tokens[c_id] = class_subtokenized_sentences
+                c_body = read_class(project_dir / project_name / c_path, int(c_offset))
+                c_tokens = code_to_cubert_sentences(
+                    code=c_body, initial_tokenizer=self.tokenizer, subword_tokenizer=self.sub_word_tokenizer)
+                cs_tokens[c_id] = c_tokens
                 with open(classes_out_dir / f'{c_name}.json', 'w') as class_out_file:
-                    json.dump(class_subtokenized_sentences, class_out_file)
+                    json.dump(c_tokens, class_out_file)
         return cs_tokens
 
     def _tokenize_methods(self, project_dir: Path, project_out_dir: Path, project_name: str):
@@ -137,12 +113,12 @@ class MMRDatasetTokenizer:
             methods_reader = csv.reader(methods_file)
             next(methods_reader)
             for m_id, m_name, m_path, m_offset, m_src_class, _ in methods_reader:
-                method_body = read_item(project_dir / project_name / m_path, int(m_offset))
-                method_subtokenized_sentences = code_to_cubert_sentences(
-                    code=method_body, initial_tokenizer=self.tokenizer, subword_tokenizer=self.sub_word_tokenizer)
-                ms_tokenized.append((m_name, m_src_class, method_subtokenized_sentences))
+                m_body = read_method(project_dir / project_name / m_path, int(m_offset))
+                m_tokens = code_to_cubert_sentences(
+                    code=m_body, initial_tokenizer=self.tokenizer, subword_tokenizer=self.sub_word_tokenizer)
+                ms_tokenized.append((m_name, m_src_class, m_tokens))
                 with (methods_out_dir / f'{m_name}.json').open('w') as method_out_file:
-                    json.dump(method_subtokenized_sentences, method_out_file)
+                    json.dump(m_tokens, method_out_file)
         return ms_tokenized
 
     @staticmethod
