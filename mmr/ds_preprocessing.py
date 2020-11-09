@@ -122,13 +122,24 @@ class MMRDatasetTokenizer:
         return ms_tokenized
 
     @staticmethod
+    def _method_found(m_tokens, c_tokens_cut):
+        if len(m_tokens) == 1:
+            if len(m_tokens[0]) < len(c_tokens_cut[0]):
+                return False
+            return any(m_tokens[0] == c_tokens_cut[0][i:i+len(m_tokens[0])]
+                       for i in range(len(c_tokens_cut[0]) - len(m_tokens[0])))
+        return c_tokens_cut[0][-len(m_tokens[0]):] == m_tokens[0] and \
+            c_tokens_cut[1:-1] == m_tokens[1:-1] and \
+            c_tokens_cut[-1][:len(m_tokens[-1]) - 1] == m_tokens[-1][:-1]
+
+    @staticmethod
     def _remove_methods_from_classes(project_out_dir, cs_tokens, ms_tokenized):
         cwm_dir = project_out_dir / 'classes_without_methods'
         cwm_dir.mkdir(parents=True)
         for m_name, m_src_class, m_tokens in ms_tokenized:
             c_tokens = cs_tokens[m_src_class]
             c_pos = 0
-            while c_tokens[c_pos:c_pos + len(m_tokens)] != m_tokens:
+            while not MMRDatasetTokenizer._method_found(m_tokens, c_tokens[c_pos:c_pos + len(m_tokens)]):
                 c_pos += 1
                 if c_pos > len(c_tokens) - len(m_tokens):
                     print('Failed to remove method from class:', project_out_dir, m_name)
