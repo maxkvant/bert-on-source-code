@@ -15,13 +15,15 @@ class MMRDatasetProject:
         self.oversampling = oversampling
         with open(meta_dir / 'methods.csv') as methods_list_file:
             methods_reader = csv.reader(methods_list_file)
+            next(methods_reader)
             self.methods = [
                 (m_name, int(m_class), tuple(map(int, m_destinations.split())))
                 for _, m_name, _, _, m_class, m_destinations in methods_reader
             ]
         with open(meta_dir / 'classes.csv') as classes_list_file:
             classes_reader = csv.reader(classes_list_file)
-            self.classes = {c_id: c_name for c_id, c_name, _, _ in classes_reader}
+            next(classes_reader)
+            self.classes = {int(c_id): c_name for c_id, c_name, _, _ in classes_reader}
         self.tokens_dir = tokens_dir
 
     def _get_class_vector(self, class_id: int) -> np.ndarray:
@@ -30,7 +32,7 @@ class MMRDatasetProject:
             c_tokens = json.load(c_tokens_file)
         return self.vector_class(c_tokens)
 
-    def _get_methods_vector(self, method_name: str) -> np.ndarray:
+    def _get_method_vector(self, method_name: str) -> np.ndarray:
         with open(self.tokens_dir / 'methods' / f'{method_name}.json') as m_tokens_file:
             m_tokens = json.load(m_tokens_file)
         return self.vector_class(m_tokens)
@@ -42,7 +44,7 @@ class MMRDatasetProject:
 
     def __iter__(self):
         for m_name, m_class, m_destinations in self.methods:
-            m_vector = self._get_methods_vector(m_name)
+            m_vector = self._get_method_vector(m_name)
             mwc_vector = self._get_class_without_method_vector(m_name)
             n_pos_samples = len(m_destinations) if self.oversampling else 1
             for i in range(n_pos_samples):
@@ -57,7 +59,7 @@ class MMRDataset:
     def __init__(self, orig_root: Path, tokenized_root: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
                  oversampling: bool):
-        project_names = [p.name for p in orig_root.iterdir() if p.is_dir()]
+        project_names = [p.name for p in orig_root.iterdir() if p.is_dir() and p.name[0] != '.']
         self.projects = [
             MMRDatasetProject(orig_root / project_name, tokenized_root / project_name,
                               vector_method, vector_class, oversampling)

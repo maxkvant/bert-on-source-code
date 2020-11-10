@@ -124,7 +124,7 @@ class MMRDatasetTokenizer:
     @staticmethod
     def _method_found(m_tokens, c_tokens_cut):
         if len(m_tokens) == 1:
-            if len(m_tokens[0]) < len(c_tokens_cut[0]):
+            if len(m_tokens[0]) > len(c_tokens_cut[0]):
                 return False
             return any(m_tokens[0] == c_tokens_cut[0][i:i+len(m_tokens[0])]
                        for i in range(len(c_tokens_cut[0]) - len(m_tokens[0])))
