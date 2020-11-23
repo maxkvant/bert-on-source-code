@@ -53,14 +53,16 @@ class MMRDatasetProject:
             for i in range(n_pos_samples):
                 if self.yield_names:
                     yield m_name, mc_name, m_vector, mwc_vector, True
-                yield m_vector, mwc_vector, True
+                else:
+                    yield m_vector, mwc_vector, True
 
             for m_destination in m_destinations:
                 md_vector = self._get_class_vector(m_destination)
                 destination_name = self.classes[m_destination]
                 if self.yield_names:
                     yield m_name, destination_name, m_vector, md_vector, False
-                yield m_vector, md_vector, False
+                else:
+                    yield m_vector, md_vector, False
 
 
 class MMRDataset:
