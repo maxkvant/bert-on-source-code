@@ -9,7 +9,7 @@ import numpy as np
 class MMRDatasetProject:
     def __init__(self, meta_dir: Path, tokens_dir: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
-                 oversampling: bool):
+                 oversampling: bool, yield_names: bool = False):
         self.vector_class = vector_class
         self.vector_method = vector_method
         self.oversampling = oversampling
@@ -25,6 +25,8 @@ class MMRDatasetProject:
             next(classes_reader)
             self.classes = {int(c_id): c_name for c_id, c_name, _, _ in classes_reader}
         self.tokens_dir = tokens_dir
+        self.yield_names = yield_names
+        self.name = meta_dir.name
 
     def _get_class_vector(self, class_id: int) -> np.ndarray:
         class_name = self.classes[class_id]
@@ -47,25 +49,35 @@ class MMRDatasetProject:
             m_vector = self._get_method_vector(m_name)
             mwc_vector = self._get_class_without_method_vector(m_name)
             n_pos_samples = len(m_destinations) if self.oversampling else 1
+            mc_name = self.classes[m_class]
             for i in range(n_pos_samples):
+                if self.yield_names:
+                    yield m_name, mc_name, m_vector, mwc_vector, True
                 yield m_vector, mwc_vector, True
 
             for m_destination in m_destinations:
                 md_vector = self._get_class_vector(m_destination)
+                destination_name = self.classes[m_destination]
+                if self.yield_names:
+                    yield m_name, destination_name, m_vector, md_vector, False
                 yield m_vector, md_vector, False
 
 
 class MMRDataset:
     def __init__(self, orig_root: Path, tokenized_root: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
-                 oversampling: bool):
+                 oversampling: bool, yield_names: bool):
+        self.yield_names = yield_names
         project_names = [p.name for p in orig_root.iterdir() if p.is_dir() and p.name[0] != '.']
         self.projects = [
             MMRDatasetProject(orig_root / project_name, tokenized_root / project_name,
-                              vector_method, vector_class, oversampling)
+                              vector_method, vector_class, oversampling, yield_names)
             for project_name in project_names
         ]
 
     def __iter__(self):
         for project in self.projects:
+            if self.yield_names:
+                for method_data in project:
+                    yield (project.name, *method_data)
             yield from project
