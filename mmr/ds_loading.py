@@ -6,10 +6,15 @@ from typing import Callable
 import numpy as np
 
 
+class TooManyLinesException(Exception):
+    pass
+
+
 class MMRDatasetProject:
     def __init__(self, meta_dir: Path, tokens_dir: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
-                 oversampling: bool, yield_names: bool = False):
+                 oversampling: bool, yield_names: bool = False,
+                 class_max_lines: int = 1000, method_max_lines: int = 100):
         self.vector_class = vector_class
         self.vector_method = vector_method
         self.oversampling = oversampling
@@ -27,42 +32,60 @@ class MMRDatasetProject:
         self.tokens_dir = tokens_dir
         self.yield_names = yield_names
         self.name = meta_dir.name
+        self.class_max_lines = class_max_lines
+        self.method_max_lines = method_max_lines
 
     def _get_class_vector(self, class_id: int) -> np.ndarray:
         class_name = self.classes[class_id]
         with open(self.tokens_dir / 'classes' / f'{class_name}.json') as c_tokens_file:
             c_tokens = json.load(c_tokens_file)
+        if len(c_tokens) > self.class_max_lines:
+            raise TooManyLinesException
         return self.vector_class(c_tokens)
-
-    def _get_method_vector(self, method_name: str) -> np.ndarray:
-        with open(self.tokens_dir / 'methods' / f'{method_name}.json') as m_tokens_file:
-            m_tokens = json.load(m_tokens_file)
-        return self.vector_class(m_tokens)
 
     def _get_class_without_method_vector(self, method_name: str) -> np.ndarray:
         with open(self.tokens_dir / 'classes_without_methods' / f'{method_name}.json') as cwm_tokens_file:
             cwm_tokens = json.load(cwm_tokens_file)
+        if len(cwm_tokens) > self.class_max_lines:
+            raise TooManyLinesException
         return self.vector_method(cwm_tokens)
+
+    def _get_method_vector(self, method_name: str) -> np.ndarray:
+        with open(self.tokens_dir / 'methods' / f'{method_name}.json') as m_tokens_file:
+            m_tokens = json.load(m_tokens_file)
+        if len(m_tokens) > self.method_max_lines:
+            raise TooManyLinesException
+        return self.vector_class(m_tokens)
 
     def __iter__(self):
         for m_name, m_class, m_destinations in self.methods:
-            m_vector = self._get_method_vector(m_name)
-            mwc_vector = self._get_class_without_method_vector(m_name)
-            n_pos_samples = len(m_destinations) if self.oversampling else 1
-            mc_name = self.classes[m_class]
-            for i in range(n_pos_samples):
-                if self.yield_names:
-                    yield m_name, mc_name, m_vector, mwc_vector, True
-                else:
-                    yield m_vector, mwc_vector, True
+            try:
+                m_vector = self._get_method_vector(m_name)
+                n_pos_samples = len(m_destinations) if self.oversampling else 1
+                mc_name = self.classes[m_class]
+            except TooManyLinesException:
+                continue
 
             for m_destination in m_destinations:
-                md_vector = self._get_class_vector(m_destination)
-                destination_name = self.classes[m_destination]
-                if self.yield_names:
-                    yield m_name, destination_name, m_vector, md_vector, False
-                else:
-                    yield m_vector, md_vector, False
+                try:
+                    mwc_vector = self._get_class_without_method_vector(m_name)
+                    for i in range(n_pos_samples):
+                        if self.yield_names:
+                            yield m_name, mc_name, m_vector, mwc_vector, True
+                        else:
+                            yield m_vector, mwc_vector, True
+                except TooManyLinesException:
+                    pass
+
+                try:
+                    md_vector = self._get_class_vector(m_destination)
+                    destination_name = self.classes[m_destination]
+                    if self.yield_names:
+                        yield m_name, destination_name, m_vector, md_vector, False
+                    else:
+                        yield m_vector, md_vector, False
+                except TooManyLinesException:
+                    pass
 
 
 class MMRDataset:
