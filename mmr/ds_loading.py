@@ -10,11 +10,29 @@ class TooManyLinesException(Exception):
     pass
 
 
+def _create_vectors(folder: Path, name: str, to_vector: Callable, precalculated: bool, max_lines: int):
+    if precalculated:
+        path = folder / f'{name}.npy'
+        if not path.is_file():
+            raise TooManyLinesException
+        class_line_vectors = np.load(str(path))['arr_0']
+        return to_vector(class_line_vectors)
+    else:
+        path = folder / f'{name}.json'
+        with open(path) as tokens_file:
+            tokens = json.load(tokens_file)
+        if 0 < max_lines < len(tokens):
+            raise TooManyLinesException
+        return to_vector(tokens)
+
+
 class MMRDatasetProject:
-    def __init__(self, meta_dir: Path, tokens_dir: Path,
+    def __init__(self, meta_dir: Path, data_dir: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
                  oversampling: bool, yield_names: bool = False,
-                 class_max_lines: int = 1000, method_max_lines: int = 100):
+                 class_max_lines: int = 1000, method_max_lines: int = 100,
+                 precalculated: bool = False):
+        self.precalculated = precalculated
         self.vector_class = vector_class
         self.vector_method = vector_method
         self.oversampling = oversampling
@@ -29,7 +47,7 @@ class MMRDatasetProject:
             classes_reader = csv.reader(classes_list_file)
             next(classes_reader)
             self.classes = {int(c_id): c_name for c_id, c_name, _, _ in classes_reader}
-        self.tokens_dir = tokens_dir
+        self.data_dir = data_dir
         self.yield_names = yield_names
         self.name = meta_dir.name
         self.class_max_lines = class_max_lines
@@ -37,25 +55,16 @@ class MMRDatasetProject:
 
     def _get_class_vector(self, class_id: int) -> np.ndarray:
         class_name = self.classes[class_id]
-        with open(self.tokens_dir / 'classes' / f'{class_name}.json') as c_tokens_file:
-            c_tokens = json.load(c_tokens_file)
-        if len(c_tokens) > self.class_max_lines:
-            raise TooManyLinesException
-        return self.vector_class(c_tokens)
+        classes_dir = self.data_dir / 'classes'
+        return _create_vectors(classes_dir, class_name, self.vector_class, self.precalculated, self.class_max_lines)
 
     def _get_class_without_method_vector(self, method_name: str) -> np.ndarray:
-        with open(self.tokens_dir / 'classes_without_methods' / f'{method_name}.json') as cwm_tokens_file:
-            cwm_tokens = json.load(cwm_tokens_file)
-        if len(cwm_tokens) > self.class_max_lines:
-            raise TooManyLinesException
-        return self.vector_method(cwm_tokens)
+        return _create_vectors(self.data_dir / 'classes_without_methods', method_name, self.vector_class,
+                               self.precalculated, self.class_max_lines)
 
     def _get_method_vector(self, method_name: str) -> np.ndarray:
-        with open(self.tokens_dir / 'methods' / f'{method_name}.json') as m_tokens_file:
-            m_tokens = json.load(m_tokens_file)
-        if len(m_tokens) > self.method_max_lines:
-            raise TooManyLinesException
-        return self.vector_class(m_tokens)
+        return _create_vectors(self.data_dir / 'methods', method_name, self.vector_method, self.precalculated,
+                               self.method_max_lines)
 
     def __iter__(self):
         for m_name, m_class, m_destinations in self.methods:
@@ -68,12 +77,12 @@ class MMRDatasetProject:
 
             for m_destination in m_destinations:
                 try:
-                    mwc_vector = self._get_class_without_method_vector(m_name)
+                    cwm_vector = self._get_class_without_method_vector(m_name)
                     for i in range(n_pos_samples):
                         if self.yield_names:
-                            yield m_name, mc_name, m_vector, mwc_vector, True
+                            yield m_name, mc_name, m_vector, cwm_vector, True
                         else:
-                            yield m_vector, mwc_vector, True
+                            yield m_vector, cwm_vector, True
                 except TooManyLinesException:
                     pass
 
@@ -91,12 +100,14 @@ class MMRDatasetProject:
 class MMRDataset:
     def __init__(self, orig_root: Path, tokenized_root: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
-                 oversampling: bool, yield_names: bool):
+                 oversampling: bool, yield_names: bool,
+                 class_max_lines: int = 1000, method_max_lines: int = 100, precalculated: bool = False):
         self.yield_names = yield_names
         project_names = [p.name for p in orig_root.iterdir() if p.is_dir() and p.name[0] != '.']
         self.projects = [
             MMRDatasetProject(orig_root / project_name, tokenized_root / project_name,
-                              vector_method, vector_class, oversampling, yield_names)
+                              vector_method, vector_class, oversampling, yield_names,
+                              class_max_lines, method_max_lines, precalculated)
             for project_name in project_names
         ]
 
@@ -105,4 +116,5 @@ class MMRDataset:
             if self.yield_names:
                 for method_data in project:
                     yield (project.name, *method_data)
-            yield from project
+            else:
+                yield from project
