@@ -27,7 +27,7 @@ def _create_vectors(folder: Path, name: str, to_vector: Callable, precalculated:
 
 
 class MMRDatasetProject:
-    def __init__(self, meta_dir: Path, data_dir: Path,
+    def __init__(self, meta_dir: Path, m_dir: Path, c_dir: Path, cwm_dir: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
                  oversampling: bool, yield_names: bool = False,
                  class_max_lines: int = 1000, method_max_lines: int = 100,
@@ -47,7 +47,9 @@ class MMRDatasetProject:
             classes_reader = csv.reader(classes_list_file)
             next(classes_reader)
             self.classes = {int(c_id): c_name for c_id, c_name, _, _ in classes_reader}
-        self.data_dir = data_dir
+        self.m_dir = m_dir
+        self.c_dir = c_dir
+        self.cwm_dir = cwm_dir
         self.yield_names = yield_names
         self.name = meta_dir.name
         self.class_max_lines = class_max_lines
@@ -55,16 +57,13 @@ class MMRDatasetProject:
 
     def _get_class_vector(self, class_id: int) -> np.ndarray:
         class_name = self.classes[class_id]
-        classes_dir = self.data_dir / 'classes'
-        return _create_vectors(classes_dir, class_name, self.vector_class, self.precalculated, self.class_max_lines)
+        return _create_vectors(self.c_dir, class_name, self.vector_class, self.precalculated, self.class_max_lines)
 
     def _get_class_without_method_vector(self, method_name: str) -> np.ndarray:
-        return _create_vectors(self.data_dir / 'classes_without_methods', method_name, self.vector_class,
-                               self.precalculated, self.class_max_lines)
+        return _create_vectors(self.cwm_dir, method_name, self.vector_class, self.precalculated, self.class_max_lines)
 
     def _get_method_vector(self, method_name: str) -> np.ndarray:
-        return _create_vectors(self.data_dir / 'methods', method_name, self.vector_method, self.precalculated,
-                               self.method_max_lines)
+        return _create_vectors(self.m_dir, method_name, self.vector_method, self.precalculated, self.method_max_lines)
 
     def __iter__(self):
         for m_name, m_class, m_destinations in self.methods:
@@ -98,14 +97,16 @@ class MMRDatasetProject:
 
 
 class MMRDataset:
-    def __init__(self, orig_root: Path, tokenized_root: Path,
+    def __init__(self, orig_root: Path, methods_data_root: Path, classes_data_root: Path,
                  vector_method: Callable[[list], np.ndarray], vector_class: Callable[[list], np.ndarray],
-                 oversampling: bool, yield_names: bool,
+                 oversampling: bool, yield_names: bool, *,
                  class_max_lines: int = 1000, method_max_lines: int = 100, precalculated: bool = False):
         self.yield_names = yield_names
         project_names = [p.name for p in orig_root.iterdir() if p.is_dir() and p.name[0] != '.']
         self.projects = [
-            MMRDatasetProject(orig_root / project_name, tokenized_root / project_name,
+            MMRDatasetProject(orig_root / project_name, methods_data_root / project_name / 'methods',
+                              classes_data_root / project_name / 'classes',
+                              classes_data_root / project_name / 'classes_without_methods',
                               vector_method, vector_class, oversampling, yield_names,
                               class_max_lines, method_max_lines, precalculated)
             for project_name in project_names
