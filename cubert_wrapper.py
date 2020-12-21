@@ -41,7 +41,7 @@ class CuBertWrapper:
         attention_mask = attention_mask.to(self.device)
         padded_batch = padded_batch.to(self.device)
         with torch.no_grad():
-            token_vectors, line_vectors = self.model(padded_batch, attention_mask=attention_mask)
+            token_vectors, line_vectors = self.model(padded_batch, attention_mask=attention_mask, return_dict=False)
             token_vectors, line_vectors = token_vectors.cpu().numpy(), line_vectors.cpu().numpy()
         token_vectors = [tv[:am.sum()] for tv, am in zip(token_vectors, attention_mask)]
         return token_vectors, line_vectors
