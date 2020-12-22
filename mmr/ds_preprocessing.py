@@ -151,6 +151,8 @@ class MMRDatasetTokenizer:
     def tokenize_project(self, project_name: str):
         project_dir = self.input_dir / project_name
         project_out_dir = self.output_dir / project_name
+        if project_out_dir.is_dir():
+            return
         cs_tokens = self._tokenize_classes(project_dir, project_out_dir, project_name)
         ms_tokens = self._tokenize_methods(project_dir, project_out_dir, project_name)
         self._remove_methods_from_classes(project_out_dir, cs_tokens, ms_tokens)
