@@ -127,7 +127,7 @@ class MMRDatasetTokenizer:
             if len(m_tokens[0]) > len(c_tokens_cut[0]):
                 return False
             return any(m_tokens[0] == c_tokens_cut[0][i:i+len(m_tokens[0])]
-                       for i in range(len(c_tokens_cut[0]) - len(m_tokens[0])))
+                       for i in range(len(c_tokens_cut[0]) - len(m_tokens[0]) + 1))
         return c_tokens_cut[0][-len(m_tokens[0]):] == m_tokens[0] and \
             c_tokens_cut[1:-1] == m_tokens[1:-1] and \
             c_tokens_cut[-1][:len(m_tokens[-1]) - 1] == m_tokens[-1][:-1]
@@ -153,9 +153,12 @@ class MMRDatasetTokenizer:
         project_out_dir = self.output_dir / project_name
         if project_out_dir.is_dir():
             return
-        cs_tokens = self._tokenize_classes(project_dir, project_out_dir, project_name)
-        ms_tokens = self._tokenize_methods(project_dir, project_out_dir, project_name)
-        self._remove_methods_from_classes(project_out_dir, cs_tokens, ms_tokens)
+        try:
+            cs_tokens = self._tokenize_classes(project_dir, project_out_dir, project_name)
+            ms_tokens = self._tokenize_methods(project_dir, project_out_dir, project_name)
+            self._remove_methods_from_classes(project_out_dir, cs_tokens, ms_tokens)
+        except FileNotFoundError as e:
+            print(f'Failed to tokenize project {project_name}: {e}')
 
 
 def main(argv):
