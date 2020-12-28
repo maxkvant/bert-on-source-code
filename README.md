@@ -33,6 +33,6 @@ To run evaluation scripts you would need to manually install cubert package as d
 
 Git LFS pointers to gzip’ed training and evaluation data are stored in `method-name-prediction/data`. To proceed one would need to clone the actual files and manually gunzip them.
 
-Run `evaluate_cubert.sh`, `evaluate_transformer.sh` or `evaluate_cubert.sh` to obtain reported metrics for the corresponding models. For sequence-to-sequence models you can edit bash script to specify `--device` argument. With optional argument `--out-file` you can provide `.csv` file, to save metrics obtained after evaluation.
+Run `evaluate_cubert.sh`, `evaluate_transformer.sh` or `evaluate_cubert.sh` to obtain reported metrics for the corresponding models. For sequence-to-sequence models you can edit bash script to specify `--device` argument. With optional argument `--out-file` you can provide `.csv` file to save metrics obtained after evaluation.
 
-There are also notebooks with preprocessing and training, paths to data and vocabularies inside of them are specified according to their location on VM we worked, so if somebody wishes to reproduce the training process they would need to change those variables accordingly.
+There are also notebooks with preprocessing and training, paths to data and vocabularies inside of them are specified according to their location on VM we worked on, so if somebody wishes to reproduce the training process they would need to change those variables accordingly.
