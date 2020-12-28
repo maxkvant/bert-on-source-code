@@ -19,7 +19,7 @@ In this project, we apply [CuBERT](https://github.com/google-research/google-res
 
 ```bash
 cd resources
-./install.sh
+./install_cubert.sh
 ```
 
 ## Move method refactoring task
