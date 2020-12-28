@@ -1,6 +1,6 @@
 # bert-on-source-code
 
-### Install CuBERT dependencies
+### Install CuBERT dependency
 
 `cd resources`
 
