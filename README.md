@@ -1,6 +1,6 @@
 # Bert on Source Code
 
-In this project we apply [CuBERT](https://github.com/google-research/google-research/tree/master/cubert) to 2 ml4se tasks: 
+In this project, we apply [CuBERT](https://github.com/google-research/google-research/tree/master/cubert) to the following ml4se tasks: 
 * Move method refactoring
 * Method name prediction
 
