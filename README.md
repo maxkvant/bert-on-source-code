@@ -15,7 +15,7 @@ In this project, we apply [CuBERT](https://github.com/google-research/google-res
 * [bert_for_source_code_report.pdf](../blob/master/bert_for_source_code_report.pdf) - our method described
 * `cubert_wrapper.py` - wrapper for cubert model to obtain contextualized embeddings directly 
 
-### CuBERT dependency installation
+## CuBERT dependency installation
 
 ```bash
 cd resources
