@@ -2,6 +2,6 @@
 
 ### Install CuBERT dependency
 
-`cd resources`
-
-`./install.sh`
+```cd resources
+./install.sh
+```
