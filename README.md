@@ -26,3 +26,13 @@ cd resources
 Files related to the MMR task are located in [mmr](/mmr) directory.  
 Training and evaluation of classifiers is present in [averaging.ipynb](/mmr/averaging.ipynb) (for classifiers applied to averaged lines) and [nns.ipynb](/mmr/nns.ipynb) (for classifiers operating on sequences) notebooks.  
 Before that the dataset should be tokenized ([ds_preprocessing.py](/mmr/ds_preprocessing.py)) and vectorized ([ds_vec.py](/mmr/ds_vec.py)). 
+
+## Method name prediction
+
+To run evaluation scripts you would need to manually install cubert package as described above, then proceed to install the rest of the packages via: `pip install -r method-name-prediction/requirements.txt`.
+
+Git LFS pointers to gzip’ed training and evaluation data are stored in `method-name-prediction/data`. To proceed one would need to clone the actual files and manually gunzip them.
+
+Run `evaluate_cubert.sh`, `evaluate_transformer.sh` or `evaluate_cubert.sh` to obtain reported metrics for the corresponding models. For sequence-to-sequence models you can edit bash script to specify `--device` argument. With optional argument `--out-file` you can provide `.csv` file, to save metrics obtained after evaluation.
+
+There are also notebooks with preprocessing and training, paths to data and vocabularies inside of them are specified according to their location on VM we worked, so if somebody wishes to reproduce the training process they would need to change those variables accordingly.
