@@ -12,7 +12,7 @@ In this project, we apply [CuBERT](https://github.com/google-research/google-res
 * `resources` - scripts for installing cubert dependency
 
 ### Files
-* [bert_for_source_code_report.pdf](bert_for_source_code_report.pdf) - 
+* [bert_for_source_code_report.pdf](bert_for_source_code_report.pdf) - our method described
 * `cubert_wrapper.py` - wrapper for cubert model to obtain contextualized embeddings directly 
 
 ## CuBERT dependency installation
